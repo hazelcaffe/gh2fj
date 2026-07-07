@@ -3,8 +3,10 @@ import axios, { AxiosInstance } from "axios";
 
 export class ForgejoClient {
     private api: AxiosInstance;
+    private orgOwner: string;
 
-    constructor(baseURL: string, token: string) {
+    constructor(baseURL: string, token: string, orgOwner = "") {
+        this.orgOwner = orgOwner;
         this.api = axios.create({
             baseURL: baseURL.endsWith("/") ? `${baseURL}api/v1` : `${baseURL}/api/v1`,
             headers: {
@@ -16,25 +18,28 @@ export class ForgejoClient {
 
     async ensureUser(user: GithubUser): Promise<void> {
         try {
-            await this.api.get(`/users/${user.login}`);
+            await this.api.get(`/admin/users/${user.login}`);
             await this.updateUser(user);
             await this.updateAvatar(user.login, user.avatar_url, false);
         } catch (err: any) {
             if (err.response?.status === 404) {
-                await this.api.post("/admin/users", {
-                    email: user.email || `${user.login}@example.com`,
-                    login_name: user.login,
-                    username: user.login,
-                    password: process.env.DEFAULT_PASSWORD || "ChangeMe123!",
-                    must_change_password: false,
-                    full_name: user.name || user.login,
-                    visibility: "limited",
-                });
+                try {
+                    await this.api.post("/admin/users", {
+                        email: user.email || `${user.login}@example.com`,
+                        username: user.login,
+                        password: process.env.DEFAULT_PASSWORD || "ChangeMe123!",
+                        must_change_password: false,
+                        full_name: user.name || user.login,
+                        visibility: "limited",
+                    });
+                } catch (createErr) {
+                    throw this.toError(createErr, `failed to create user ${user.login}`);
+                }
 
                 await this.updateUser(user);
                 await this.updateAvatar(user.login, user.avatar_url, false);
             } else {
-                throw err;
+                throw this.toError(err, `failed to ensure user ${user.login}`);
             }
         }
     }
@@ -46,17 +51,22 @@ export class ForgejoClient {
             await this.updateAvatar(org.login, org.avatar_url, true);
         } catch (err: any) {
             if (err.response?.status === 404) {
-                await this.api.post(`/orgs`, {
-                    username: org.login,
-                    full_name: org.name || org.login,
-                    description: org.description,
-                    website: org.websiteUrl,
-                    visibility: "private",
-                });
+                const endpoint = this.orgOwner ? `/admin/users/${this.orgOwner}/orgs` : "/orgs";
+                try {
+                    await this.api.post(endpoint, {
+                        username: org.login,
+                        full_name: org.name || org.login,
+                        description: org.description || "",
+                        website: org.websiteUrl || "",
+                        visibility: "private",
+                    });
+                } catch (createErr) {
+                    throw this.toError(createErr, `failed to create org ${org.login}`);
+                }
 
                 await this.updateAvatar(org.login, org.avatar_url, true);
             } else {
-                throw err;
+                throw this.toError(err, `failed to ensure org ${org.login}`);
             }
         }
     }
@@ -86,7 +96,7 @@ export class ForgejoClient {
 
                 return "updated_private";
             } catch (err: any) {
-                return `error: patch failed: ${err.message}`;
+                return `error: patch failed: ${this.errorMessage(err)}`;
             }
         } catch (err: any) {
             if (err.response?.status === 404) {
@@ -103,7 +113,7 @@ export class ForgejoClient {
 
                 return "migrated";
             } else {
-                return `error: ${err.message}`;
+                return `error: ${this.errorMessage(err)}`;
             }
         }
     }
@@ -151,5 +161,19 @@ export class ForgejoClient {
                 });
             }
         } catch { }
+    }
+
+    private toError(err: any, context: string): Error {
+        return new Error(`${context}: ${this.errorMessage(err)}`);
+    }
+
+    private errorMessage(err: any): string {
+        if (!axios.isAxiosError(err)) return err?.message || String(err);
+
+        const status = err.response?.status;
+        const data = err.response?.data;
+        const detail = typeof data === "string" ? data : data ? JSON.stringify(data) : err.message;
+
+        return status ? `HTTP ${status}: ${detail}` : err.message;
     }
 }

@@ -5,7 +5,7 @@ import ora, { Ora } from "ora";
 import chalk from "chalk";
 
 const github = new GithubClient(config.githubToken);
-const forgejo = new ForgejoClient(config.forgejoUrl, config.forgejoToken);
+const forgejo = new ForgejoClient(config.forgejoUrl, config.forgejoToken, config.forgejoOrgOwner);
 
 async function main() {
     const spinner = ora("Starting gh2fj...").start();
