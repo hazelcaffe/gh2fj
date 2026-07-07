@@ -25,7 +25,7 @@ export class ForgejoClient {
             if (err.response?.status === 404) {
                 try {
                     await this.api.post("/admin/users", {
-                        email: user.email || `${user.login}@example.com`,
+                        email: this.userEmail(user),
                         username: user.login,
                         password: process.env.DEFAULT_PASSWORD || "ChangeMe123!",
                         must_change_password: false,
@@ -100,16 +100,20 @@ export class ForgejoClient {
             }
         } catch (err: any) {
             if (err.response?.status === 404) {
-                await this.api.post("/repos/migrate", {
-                    clone_addr: originalUrl,
-                    mirror: true,
-                    repo_name: repoName,
-                    repo_owner: targetOwner,
-                    description: description || "",
-                    private: true,
-                    service: "github",
-                    auth_token: accessToken || "",
-                });
+                try {
+                    await this.api.post("/repos/migrate", {
+                        clone_addr: originalUrl,
+                        mirror: true,
+                        repo_name: repoName,
+                        repo_owner: targetOwner,
+                        description: description || "",
+                        private: true,
+                        service: "github",
+                        auth_token: accessToken || "",
+                    });
+                } catch (createErr) {
+                    return `error: ${this.errorMessage(createErr)}`;
+                }
 
                 return "migrated";
             } else {
@@ -176,6 +180,15 @@ export class ForgejoClient {
         } catch {
             return "";
         }
+    }
+
+    private userEmail(user: GithubUser): string {
+        if (!user.email) return `${user.login}@example.com`;
+
+        const at = user.email.lastIndexOf("@");
+        if (at <= 0) return user.email;
+
+        return `${user.email.slice(0, at)}+gh${user.email.slice(at)}`;
     }
 
     private errorMessage(err: any): string {
