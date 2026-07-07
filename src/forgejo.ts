@@ -18,7 +18,7 @@ export class ForgejoClient {
 
     async ensureUser(user: GithubUser): Promise<void> {
         try {
-            await this.api.get(`/admin/users/${user.login}`);
+            await this.api.get(`/users/${user.login}`);
             await this.updateUser(user);
             await this.updateAvatar(user.login, user.avatar_url, false);
         } catch (err: any) {
@@ -57,7 +57,7 @@ export class ForgejoClient {
                         username: org.login,
                         full_name: org.name || org.login,
                         description: org.description || "",
-                        website: org.websiteUrl || "",
+                        website: this.validUrl(org.websiteUrl),
                         visibility: "private",
                     });
                 } catch (createErr) {
@@ -122,7 +122,7 @@ export class ForgejoClient {
         try {
             await this.api.patch(`/admin/users/${user.login}`, {
                 full_name: user.name || user.login,
-                website: user.websiteUrl || "",
+                website: this.validUrl(user.websiteUrl),
                 location: user.location || "",
                 description: user.bio || "",
                 visibility: "limited",
@@ -135,7 +135,7 @@ export class ForgejoClient {
             await this.api.patch(`/orgs/${org.login}`, {
                 full_name: org.name || org.login,
                 description: org.description || "",
-                website: org.websiteUrl || "",
+                website: this.validUrl(org.websiteUrl),
                 visibility: "private",
             });
         } catch { }
@@ -165,6 +165,17 @@ export class ForgejoClient {
 
     private toError(err: any, context: string): Error {
         return new Error(`${context}: ${this.errorMessage(err)}`);
+    }
+
+    private validUrl(value: string | null): string {
+        if (!value) return "";
+
+        try {
+            const url = new URL(value);
+            return url.protocol === "http:" || url.protocol === "https:" ? value : "";
+        } catch {
+            return "";
+        }
     }
 
     private errorMessage(err: any): string {
